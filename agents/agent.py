@@ -10,7 +10,8 @@ class Agent(object):
         self.action_size = task.action_size
         self.action_low = task.action_low
         self.action_high = task.action_high
-
+        
+        #Parames
         self.MU = 0
         self.THETA = 0.15
         self.SIGMA = 0.10
@@ -19,16 +20,24 @@ class Agent(object):
         self.BATCHS = 256
         self.MAX_REWARD = -999999999
 
+        #Actor Model
         self.actor_local = Actor(self.state_size, self.action_size, self.action_low, self.action_high)
         self.actor_target = Actor(self.state_size, self.action_size, self.action_low, self.action_high)
+        #init
         self.actor_target.model.set_weights(self.actor_local.model.get_weights())
 
+        #Critic Model
         self.critic_local = Critic(self.state_size, self.action_size)
         self.critic_target = Critic(self.state_size, self.action_size)
+        #init
         self.critic_target.model.set_weights(self.critic_local.model.get_weights())
 
+        #Noise process
         self.noiseObj = Noise(self.action_size, self.MU, self.THETA, self.SIGMA)
+        
+        #Replay memory
         self.replayObj = Replay(self.BATCHS)
+ 
 
     def reset_episode(self):
         self.count = 0
@@ -61,15 +70,18 @@ class Agent(object):
         rewards = np.array([e.reward for e in experiences if e is not None]).reshape(-1, 1)
         dones = np.array([e.done for e in experiences if e is not None]).reshape(-1, 1)
 
-        next_sta = np.array([e.next_state for e in experiences if e is not None])
-        next_act = self.actor_target.model.predict_on_batch(next_sta)
-        next_tgt= self.critic_target.model.predict_on_batch([next_sta, next_act])
-        tgt = rewards + self.GAMMA * next_tgt * (1 - dones)
+        next_state = np.array([e.next_state for e in experiences if e is not None])
+        #获取预测next_state的actions 和目标模型的Q值
+        next_actions = self.actor_target.model.predict_on_batch(next_state)
+        
+        next_Q_targets= self.critic_target.model.predict_on_batch([next_state, next_actions])
+        Q_targets = rewards + self.GAMMA * next_Q_targets * (1 - dones)
 
-        self.critic_local.model.train_on_batch(x=[states, actions], y=tgt)
-        gd = np.reshape(self.critic_local.get_action_gradients([states, actions, 0]), (-1, self.action_size))
-
-        self.actor_local.train_fn([states, gd, 1])
+        self.critic_local.model.train_on_batch(x=[states, actions], y=Q_targets)
+        #训练actor 模型
+        action_gradients = np.reshape(self.critic_local.get_action_gradients([states, actions, 0]), (-1, self.action_size))
+        self.actor_local.train_fn([states, action_gradients, 1])
+        
         self.update(self.critic_local.model, self.critic_target.model)
         self.update(self.actor_local.model, self.actor_target.model)
 
